@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sunmao Joints launcher foreground (tools/build_icon.py draws the same shapes for the PICO layered icon). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FF6B4A32" android:strokeColor="#FF3A2A1E" android:strokeWidth="0.6" android:pathData="M29,22L51,22L51,86L29,86Z" />
+    <path android:fillColor="#FF3A2618" android:strokeColor="#FF3A2A1E" android:strokeWidth="0.6" android:pathData="M41,46L51,46L51,62L41,62Z" />
+    <path android:fillColor="#FFF4E9D8" android:strokeColor="#FF3A2A1E" android:strokeWidth="0.6" android:pathData="M56,41L86,41L86,67L56,67Z" />
+    <path android:fillColor="#FFE3B341" android:strokeColor="#FF3A2A1E" android:strokeWidth="0.6" android:pathData="M45,47L56,47L56,61L45,61Z" />
+</vector>

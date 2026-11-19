@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sunmao Joints</string>
+    <string name="lang_code">en</string>
+    <string name="tab_joints">Joints</string>
+    <string name="tab_settings">Settings</string>
+    <string name="loading">Setting up the wood…</string>
+    <string name="lesson_of">Lesson %1$d / 8</string>
+    <string name="lesson_name">Lesson %1$d / 8 · %2$s</string>
+    <string name="mini_line">The small one on the left is life size.</string>
+    <string name="first_sub">Two pieces of wood, no nails. Pull it apart and see how it holds.</string>
+    <string name="corrupt">Could not read the last save. Starting from lesson 1.</string>
+    <string name="btn_open">Pull it apart</string>
+    <string name="btn_build">Let me try</string>
+    <string name="btn_close">Close it</string>
+    <string name="btn_quit">Not now</string>
+    <string name="btn_next">Next one</string>
+    <string name="btn_again">Once more</string>
+    <string name="btn_first">Back to lesson 1</string>
+    <string name="cd_prev">Previous lesson</string>
+    <string name="cd_next">Next lesson</string>
+    <string name="cd_learned">Learned</string>
+    <string name="step_of">Step %1$d / %2$d</string>
+    <string name="pick">Tap an arrow to push the piece in.</string>
+    <string name="first_pick">The rail\'s tenon goes into the post\'s mortise. Tap the glowing arrow to push it home.</string>
+    <string name="try_glow">Try the glowing arrow.</string>
+    <string name="another">Try another arrow.</string>
+    <string name="ok_line">That is it.</string>
+    <string name="legend_tenon">Gold = tenon</string>
+    <string name="legend_mortise">Red = mortise</string>
+    <string name="done_title">%1$s. Got it.</string>
+    <string name="all_title">All eight, done.</string>
+    <string name="all_sub">Next time you see a chair or a cabinet, look for them.</string>
+    <string name="settings_sound">Sound</string>
+    <string name="settings_hints">Hint after two misses</string>
+    <string name="settings_lang">Language</string>
+    <string name="lang_zh" translatable="false">中文</string>
+    <string name="lang_en" translatable="false">English</string>
+    <string name="settings_fine">%1$s v%2$s · Sounds: CC0 wood recordings (freesound, Kenney).</string>
+    <string name="settings_exit">Quit app</string>
+    <string name="settings_howto">How to use</string>
+    <string name="exit_q">Quit Sunmao Joints? Progress is saved.</string>
+    <string name="exit_yes">Quit</string>
+    <string name="exit_no">Stay</string>
+    <string name="how_to_title">How to use</string>
+    <string name="how_to_back">Back</string>
+    <string name="how_to_open">Pull apart</string>
+    <string name="how_to_open_hand">Hand: look at [Pull it apart], pinch.</string>
+    <string name="how_to_open_pad">Controller: point the ray, pull the trigger.</string>
+    <string name="how_to_push">Push a piece</string>
+    <string name="how_to_push_hand">Hand: look at a teal arrow, pinch.</string>
+    <string name="how_to_push_pad">Controller: point at the arrow, trigger.</string>
+    <string name="how_to_turn">Turn it</string>
+    <string name="how_to_turn_hand">Hand: pinch the round stand, a quarter turn.</string>
+    <string name="how_to_turn_pad">Controller: point at the stand, trigger.</string>
+    <string name="how_to_window">Window closed?</string>
+    <string name="how_to_window_hand">Hand: pinch the round badge, top right.</string>
+    <string name="how_to_window_pad">Controller: point at the badge, trigger.</string>
+</resources>
