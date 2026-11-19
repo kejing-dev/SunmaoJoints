@@ -279,7 +279,7 @@ class Flow(
         var ret: RetAnim? = null
         var at = t0
         st.push?.let { p ->
-            ret = RetAnim(p.piece, Stage.pushPose(st.lessonData, p, t0, Stage.yawQ(st, t0)), t0)
+            ret = RetAnim(p.piece, Frames.pushPose(st.lessonData, p, t0, Frames.yawQ(st, t0)), t0)
             at = t0 + T.QUICK_BACK
         }
         val push = PushAnim(st.step, i, c.piece, c.outcome, Layout.entryCm(row, c), row.stopCm, row.bounceCm, at)

@@ -66,8 +66,10 @@ internal class SceneResources private constructor() {
     fun <T : Resource> keep(r: T): T { r.toGlobal(); synchronized(all) { all += r }; return r }
     fun close() { synchronized(all) { all.forEach { runCatching { it.close() } }; all.clear() } }
 
-    /** pieces[lesson][pieceId] */
-    lateinit var pieces: List<Map<String, PieceMesh>>; private set
+    /** pieces[lesson][pieceId], made on demand ([lesson]): the current one first, the rest in the background. */
+    private val pieces = arrayOfNulls<Map<String, PieceMesh>>(8)
+    fun piecesOf(li: Int): Map<String, PieceMesh>? = synchronized(pieces) { pieces[li] }
+    val allLoaded: Boolean get() = synchronized(pieces) { pieces.all { it != null } }
     lateinit var cube: MeshResource; private set
     lateinit var drum: MeshResource; private set
     lateinit var badgeDisc: MeshResource; private set
@@ -106,9 +108,32 @@ internal class SceneResources private constructor() {
     fun ghostOf(m: Mat): Material = when (m) { Mat.LIGHT -> ghostLight; Mat.DARK -> ghostDark; Mat.GOLD -> ghostGold; Mat.RED -> ghostRed }
     fun woodOf(m: Mat): Material = if (m == Mat.DARK) woodDark else woodLight
 
-    /** The plaque's line as a material (cached; call off the main thread: design text3d, ivory on walnut). */
-    fun plaqueText(text: String): Material = synchronized(textMats) {
-        textMats.getOrPut(text) { unlit(0xFFFFFFFF, tex = keep(TextureResource.create(plaqueBitmap(text)))) .let { keep(it) } }
+    /** The plaque's line as a material if it is made already (design text3d, ivory on walnut). */
+    fun cachedText(text: String): Material? = synchronized(textMats) { textMats[text] }
+
+    /** Makes the plaque line's material (off the main thread: creating a texture waits on the renderer). */
+    fun plaqueText(text: String): Material {
+        cachedText(text)?.let { return it }
+        val m = keep(unlit(0xFFFFFFFF, tex = keep(TextureResource.create(plaqueBitmap(text)))))
+        synchronized(textMats) { textMats[text] = m }
+        return m
+    }
+
+    /** The meshes of lesson [li] (off the main thread). */
+    fun lesson(li: Int): Map<String, PieceMesh> {
+        piecesOf(li)?.let { return it }
+        val l = Joints.ALL[li]
+        val m = l.pieces.associate { pc ->
+            val parts = MeshGen.piece(pc)
+            pc.id to PieceMesh(
+                keep(meshOf("${l.id}.${pc.id}", parts.wood)), parts.woodMat,
+                if (parts.gold.empty) null else keep(meshOf("${l.id}.${pc.id}.gold", parts.gold)),
+                if (parts.red.empty) null else keep(meshOf("${l.id}.${pc.id}.red", parts.red)),
+                parts.triangles,
+            )
+        }
+        synchronized(pieces) { pieces[li] = m }
+        return m
     }
 
     companion object {
@@ -161,7 +186,7 @@ internal class SceneResources private constructor() {
             return b
         }
 
-        suspend fun create(): SceneResources = coroutineScope {
+        suspend fun create(firstLesson: Int): SceneResources = coroutineScope {
             val r = SceneResources()
             fun <T : Resource> T.keep(): T = r.keep(this)
             val io = Dispatchers.IO
@@ -170,19 +195,7 @@ internal class SceneResources private constructor() {
             val shadowTex = async(io) { TextureResource.create(shadowBitmap()).keep() }
             val badgeTex = async(io) { TextureResource.create(badgeBitmap()).keep() }
             listOf(
-                async(io) {
-                    r.pieces = Joints.ALL.map { l ->
-                        l.pieces.associate { pc ->
-                            val parts = MeshGen.piece(pc)
-                            pc.id to PieceMesh(
-                                meshOf("${l.id}.${pc.id}", parts.wood).keep(), parts.woodMat,
-                                if (parts.gold.empty) null else meshOf("${l.id}.${pc.id}.gold", parts.gold).keep(),
-                                if (parts.red.empty) null else meshOf("${l.id}.${pc.id}.red", parts.red).keep(),
-                                parts.triangles,
-                            )
-                        }
-                    }
-                },
+                async(io) { r.lesson(firstLesson) },
                 async(io) { r.cube = meshOf("cube", MeshGen.cube()).keep() },
                 async(io) { r.drum = meshOf("turntable", MeshGen.drum(Layout.TABLE_R, 0.10f, 48)).keep() },
                 async(io) { r.badgeDisc = meshOf("badge", MeshGen.drum(Layout.BADGE_D / 2, 0.008f, 32)).keep() },
@@ -208,7 +221,7 @@ internal class SceneResources private constructor() {
             r.ghostGold = pbr(0xFFE3B341, 0.5f, opacity = 0.35f).keep()
             r.ghostRed = pbr(0xFFC8452C, 0.5f, opacity = 0.35f).keep()
             r.table = pbr(0xFFFFFFFF, 0.6f, tableTex).keep()
-            r.mat = pbr(0xFFFFFFFF, 0.7f, matTex).keep()
+            r.mat = pbr(0xFFC9B18C, 0.8f, matTex).keep()
             r.block = pbr(0xFFFFFFFF, 0.6f, blockTex).keep()
             r.plaqueBoard = pbr(0xFF3A2A1E, 0.6f).keep()
             // stone teal, the only colour you can tap (design palette); hover / hint #3FB5B0

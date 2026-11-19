@@ -315,7 +315,7 @@ private fun HowTo(modifier: Modifier) {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(SunmaoColors.Card).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(painter = painterResource(icon), contentDescription = null, modifier = Modifier.size(24.dp), tint = SunmaoColors.Ink)
                 Spacer(Modifier.width(10.dp))
-                Txt(stringResource(title), "howto/title$i", style = PicoTheme.typography.titleSmall, color = SunmaoColors.Ink, maxLines = 2, modifier = Modifier.width(112.dp))
+                Txt(stringResource(title), "howto/title$i", style = PicoTheme.typography.titleSmall, color = SunmaoColors.Ink, maxLines = 2, modifier = Modifier.width(132.dp))
                 Column(Modifier.weight(1f)) {
                     Txt(stringResource(ways.first), "howto/hand$i", style = PicoTheme.typography.bodySmall, color = SunmaoColors.Ink, maxLines = 1)
                     Txt(stringResource(ways.second), "howto/pad$i", style = PicoTheme.typography.bodySmall, color = SunmaoColors.InkSecondary, maxLines = 1)

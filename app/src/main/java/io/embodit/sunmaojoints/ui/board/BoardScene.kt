@@ -17,7 +17,7 @@ import io.embodit.sunmaojoints.domain.Phase
 import io.embodit.sunmaojoints.domain.PlayState
 import io.embodit.sunmaojoints.domain.Pose
 import io.embodit.sunmaojoints.domain.Q
-import io.embodit.sunmaojoints.domain.Stage
+import io.embodit.sunmaojoints.domain.Frames
 import io.embodit.sunmaojoints.domain.V3
 import io.embodit.sunmaojoints.platform.TAG
 import io.embodit.sunmaojoints.ui.board.input.GazeTargets
@@ -25,7 +25,7 @@ import kotlin.math.PI
 
 /**
  * Every entity of the volume (design spatialLayout). Compose hands over [PlayState] through [apply]; everything that
- * moves is placed in [onFrame] from [Stage.frame] (ECS, not Compose).
+ * moves is placed in [onFrame] from [Frames.frame] (ECS, not Compose).
  *
  * ```
  * root -> content (scaled with a user resize of the volume)
@@ -69,7 +69,7 @@ internal class BoardScene {
     var now: () -> Long = { SystemClock.uptimeMillis() }
     /** Debug evidence: where each arrow stood in the last frame. */
     val lastArrows = HashMap<Int, V3>()
-    var lastFrame: Stage.Frame? = null; private set
+    var lastFrame: Frames.Frame? = null; private set
 
     init { root.addChild(content) }
 
@@ -129,7 +129,7 @@ internal class BoardScene {
         for ((i, c) in Layout.MAT_C.withIndex()) slab("mat:$i", r.mat, c, Layout.MAT_SIZE)
         block = slab("block", r.block, V3(0f, Layout.TABLE_Y + Layout.BLOCK_H / 2, 0f), V3(0.12f, Layout.BLOCK_H, 0.08f)).apply { enabled = false }
         slab("plaqueBoard", r.plaqueBoard, Layout.PLAQUE_C - V3(0f, 0f, Layout.PLAQUE_SIZE.z / 2), Layout.PLAQUE_SIZE)
-        plaqueText = ModelEntity(r.plaqueQuad, r.plaqueText(" ")).apply {
+        plaqueText = ModelEntity(r.plaqueQuad, r.cachedText(" ") ?: r.plaqueBoard).apply {
             setName("plaqueText"); content.addChild(this)
             transform().setPosition(Vector3(Layout.PLAQUE_C.x, Layout.PLAQUE_C.y, 0.0012f))
         }
@@ -148,28 +148,32 @@ internal class BoardScene {
             content.addChild(h)
             h.transform().setPosition(Vector3(Layout.BADGE_C.x, Layout.BADGE_C.y, Layout.BADGE_C.z))
         }
-        // S10: the eight joints at 0.25x on the mats
-        for (li in Joints.ALL.indices) {
-            val g = Entity().apply { setName("minis:$li"); enabled = false }
-            for (pc in Joints.ALL[li].pieces) addPieceModels(g, li, pc.id)
-            val p = Layout.miniAllPose(li)
-            place(g, p)
-            g.transform().setScaleVector(Vector3(Layout.MINI_ALL_K, Layout.MINI_ALL_K, Layout.MINI_ALL_K))
-            content.addChild(g); minis += g
-        }
-        Log.i(TAG, "SCENE resources in (${r.pieces.sumOf { m -> m.values.sumOf { it.triangles } }} piece triangles for 21 pieces)")
+        Log.i(TAG, "SCENE shared resources in")
         onFrame()
     }
 
     /** Wood / gold / red meshes of piece [id] of lesson [li] under [parent]; returns the wood entity. */
     private fun addPieceModels(parent: Entity, li: Int, id: String, ghost: Boolean = false): ModelEntity {
         val r = res!!
-        val m = r.pieces[li][id]!!
+        val m = r.piecesOf(li)!![id]!!
         val wood = ModelEntity(m.wood, if (ghost) r.ghostOf(m.woodMat) else r.woodOf(m.woodMat)).apply { setName("$id:wood") }
         parent.addChild(wood)
         m.gold?.let { parent.addChild(ModelEntity(it, if (ghost) r.ghostGold else r.gold).apply { setName("$id:gold") }) }
         m.red?.let { parent.addChild(ModelEntity(it, if (ghost) r.ghostRed else r.red).apply { setName("$id:red") }) }
         return wood
+    }
+
+    /** S10: the eight joints at 0.25x on the mats (made once every lesson's meshes are in). */
+    private fun buildMinis() {
+        val r = res ?: return
+        if (minis.isNotEmpty() || !r.allLoaded) return
+        for (li in Joints.ALL.indices) {
+            val g = Entity().apply { setName("minis:$li"); enabled = false }
+            for (pc in Joints.ALL[li].pieces) addPieceModels(g, li, pc.id)
+            place(g, Layout.miniAllPose(li))
+            g.transform().setScaleVector(Vector3(Layout.MINI_ALL_K, Layout.MINI_ALL_K, Layout.MINI_ALL_K))
+            content.addChild(g); minis += g
+        }
     }
 
     private fun build(li: Int) {
@@ -210,6 +214,13 @@ internal class BoardScene {
         }
     }
 
+    /** Background maker for resources the frame needs but are not in yet (set by BoardScreen). */
+    var make: ((suspend () -> Unit) -> Unit)? = null
+    private val asked = HashSet<String>()
+
+    private fun want(li: Int) { val r = res ?: return; if (asked.add("lesson:$li")) make?.invoke { r.lesson(li) } }
+    private fun wantText(t: String) { val r = res ?: return; if (asked.add("text:$t")) make?.invoke { r.plaqueText(t) } }
+
     fun apply(next: PlayState) {
         state = next
         onFrame()
@@ -219,10 +230,13 @@ internal class BoardScene {
         val r = res ?: return
         val st = state
         val t = now()
-        if (st.lesson != builtLesson) build(st.lesson)
+        if (st.lesson != builtLesson) {
+            if (r.piecesOf(st.lesson) == null) { want(st.lesson); return }
+            build(st.lesson)
+        }
         val stepKey = if (st.phase in setOf(Phase.PICK, Phase.PUSH, Phase.BLOCKED, Phase.TRAP)) st.step else -1
         if (stepKey != builtStep) buildGhosts(st.lesson, stepKey)
-        val f = Stage.frame(st, t)
+        val f = Frames.frame(st, t)
         lastFrame = f
 
         // turntable turns with the yaw (its grain shows the turn); block turns with the joint
@@ -268,10 +282,13 @@ internal class BoardScene {
         }
         val line = f.plaque?.of(zh) ?: " "
         if (line != plaqueShown) {
-            plaqueShown = line
-            val mat = r.plaqueText(line)
-            plaqueText?.components?.get(ModelComponent::class.java)?.materials?.set(0, mat)
+            val mat = r.cachedText(line)
+            if (mat != null) {
+                plaqueShown = line
+                plaqueText?.components?.get(ModelComponent::class.java)?.materials?.set(0, mat)
+            } else wantText(line)
         }
+        if (f.minisAll) buildMinis()
         mini?.enabled = f.mini
         minis.forEach { it.enabled = f.minisAll }
         badge?.enabled = badgeWanted

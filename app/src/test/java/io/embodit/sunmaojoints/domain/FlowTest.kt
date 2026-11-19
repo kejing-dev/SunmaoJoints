@@ -154,15 +154,15 @@ class FlowTest {
         val f = flow(MemStore(Progress(firstRunDone = true)))
         for (li in 0..7) {
             f.gotoLesson(li)
-            assertEquals(Joints.ALL[li].name, Stage.frame(f.state.value, testScheduler.currentTime).plaque)
+            assertEquals(Joints.ALL[li].name, Frames.frame(f.state.value, testScheduler.currentTime).plaque)
             f.open(); wait(1500)
             f.build()
-            val fr = Stage.frame(f.state.value, testScheduler.currentTime + 500)
+            val fr = Frames.frame(f.state.value, testScheduler.currentTime + 500)
             assertEquals(Joints.ASK, fr.plaque)
             assertEquals(Joints.ALL[li].steps[0].cands.size, fr.arrows.size)
             for (k in Joints.ALL[li].steps.indices) { f.tap(Joints.ALL[li].steps[k].fitIndex); wait(1300) }
             assertTrue(f.state.value.phase == Phase.DONE || f.state.value.phase == Phase.ALL_DONE)
-            val mid = Stage.frame(f.state.value, f.state.value.doneAt + (if (f.state.value.tug) T.TUG else 0) + 1000)
+            val mid = Frames.frame(f.state.value, f.state.value.doneAt + (if (f.state.value.tug) T.TUG else 0) + 1000)
             assertEquals(0.35f, mid.wood, 1e-3f)
             assertEquals(Joints.LOCKED, mid.plaque)
             wait(8000)

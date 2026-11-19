@@ -10,7 +10,7 @@ import org.junit.Test
 class LayoutTest {
     private fun pick(lesson: Int, step: Int, yaw: Int) = PlayState(lesson = lesson, phase = Phase.PICK, step = step, yaw = yaw, stepAt = 0)
 
-    private fun pieceBoxes(st: PlayState, f: Stage.Frame): List<Aabb> =
+    private fun pieceBoxes(st: PlayState, f: Frames.Frame): List<Aabb> =
         f.pieces.map { v -> st.lessonData.piece(v.id).bounds.let { Aabb(it.lo * Layout.CM, it.hi * Layout.CM) }.transformed(v.pose) }
 
     @Test fun u4EverythingInsideTheVolume() {
@@ -19,14 +19,14 @@ class LayoutTest {
             val l = Joints.ALL[li]
             for (k in l.steps.indices) for (y in 0..3) {
                 val st = pick(li, k, y)
-                val f = Stage.frame(st, 10_000)
-                for ((what, b) in Stage.boxes(st, f)) if (!(Layout.INNER.lo.x <= b.lo.x && b.hi.x <= Layout.INNER.hi.x && Layout.INNER.lo.y <= b.lo.y && b.hi.y <= Layout.INNER.hi.y && Layout.INNER.lo.z <= b.lo.z && b.hi.z <= Layout.INNER.hi.z))
+                val f = Frames.frame(st, 10_000)
+                for ((what, b) in Frames.boxes(st, f)) if (!(Layout.INNER.lo.x <= b.lo.x && b.hi.x <= Layout.INNER.hi.x && Layout.INNER.lo.y <= b.lo.y && b.hi.y <= Layout.INNER.hi.y && Layout.INNER.lo.z <= b.lo.z && b.hi.z <= Layout.INNER.hi.z))
                     bad += "${l.id} step $k stop $y $what $b"
             }
             // pulled apart, every stop
             for (y in 0..3) {
                 val st = PlayState(lesson = li, phase = Phase.OPEN, yaw = y, openAt = 0)
-                for ((what, b) in Stage.boxes(st, Stage.frame(st, 10_000))) if (!(Layout.INNER.lo.x <= b.lo.x && b.hi.x <= Layout.INNER.hi.x && b.hi.y <= Layout.INNER.hi.y && Layout.INNER.lo.z <= b.lo.z && b.hi.z <= Layout.INNER.hi.z))
+                for ((what, b) in Frames.boxes(st, Frames.frame(st, 10_000))) if (!(Layout.INNER.lo.x <= b.lo.x && b.hi.x <= Layout.INNER.hi.x && b.hi.y <= Layout.INNER.hi.y && Layout.INNER.lo.z <= b.lo.z && b.hi.z <= Layout.INNER.hi.z))
                     bad += "${l.id} apart stop $y $what $b"
             }
         }
@@ -59,7 +59,7 @@ class LayoutTest {
             val l = Joints.ALL[li]
             for (k in l.steps.indices) for (y in 0..3) {
                 val st = pick(li, k, y)
-                val f = Stage.frame(st, 10_000)
+                val f = Frames.frame(st, 10_000)
                 val boxes = pieceBoxes(st, f)
                 for (a in f.arrows) {
                     val ang = Layout.angleDeg(Layout.EYE, a.spot.pos, Layout.ARROW_HIT_D)
@@ -93,8 +93,8 @@ class LayoutTest {
     @Test fun plaqueClear() {
         for (li in 0..7) for (k in Joints.ALL[li].steps.indices) {
             val st = pick(li, k, 0)
-            val f = Stage.frame(st, 10_000)
-            for ((what, b) in Stage.boxes(st, f)) assertTrue("${Joints.ALL[li].id} $what ${b.hi.y}", b.hi.y < Layout.PLAQUE_C.y - Layout.PLAQUE_SIZE.y / 2 || kotlin.math.abs(b.centre.z) > 0.1f)
+            val f = Frames.frame(st, 10_000)
+            for ((what, b) in Frames.boxes(st, f)) assertTrue("${Joints.ALL[li].id} $what ${b.hi.y}", b.hi.y < Layout.PLAQUE_C.y - Layout.PLAQUE_SIZE.y / 2 || kotlin.math.abs(b.centre.z) > 0.1f)
         }
     }
 

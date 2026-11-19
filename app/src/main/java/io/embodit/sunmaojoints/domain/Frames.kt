@@ -9,7 +9,7 @@ import kotlin.math.sin
  * What the volume shows at time [now] (pure: BoardScene only applies it; the unit tests walk every step x stop).
  * Poses are in the volume frame, metres.
  */
-object Stage {
+object Frames {
     data class PieceView(val id: String, val pose: Pose)
     data class GhostView(val cand: Int, val piece: String, val pose: Pose, val scale: Float, val alpha: Float)
     data class ArrowView(val cand: Int, val spot: Layout.ArrowSpot, val rot: Q, val scale: Float, val dim: Boolean, val glow: Boolean)
@@ -95,7 +95,8 @@ object Stage {
     private fun flashOn(sinceMs: Long): Boolean = sinceMs in 0 until 120 || sinceMs in 220 until 340
 
     private fun flashView(l: Lesson, box: Aabb, axis: Int, yaw: Q): FlashView {
-        val pad = V3.axis(axis, 0.2f) + V3(0.3f, 0.3f, 0.3f) - V3.axis(axis, 0.3f)
+        // wider than the contact so it shows around the piece that covers it (design E10: 贴在真正撞上的那一对面上)
+        val pad = V3.axis(axis, 0.2f) + V3(1.8f, 1.8f, 1.8f) - V3.axis(axis, 1.8f)
         var size = box.size + pad * 2f
         size = V3(max(size.x, 0.4f), max(size.y, 0.4f), max(size.z, 0.4f))
         return FlashView(Layout.joint(l, yaw) * Pose(box.centre * Layout.CM), size * Layout.CM)
@@ -183,7 +184,7 @@ object Stage {
                         }
                         if (fitRow.stopCm != 0f) plaque = c.sign
                     }
-                } else if (st.reason != null) plaque = step.cands.getOrNull(st.reason)?.sign ?: plaque
+                }
             }
             Phase.DONE, Phase.ALL_DONE -> {
                 val t = now - st.doneAt

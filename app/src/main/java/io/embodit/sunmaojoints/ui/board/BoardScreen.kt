@@ -37,7 +37,9 @@ import io.embodit.sunmaojoints.ui.board.input.boardInput
 import io.embodit.sunmaojoints.ui.control.exitApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import io.embodit.sunmaojoints.domain.Joints
 import kotlin.math.abs
 
 /** Runs the volume's per-frame motion inside the ECS (never in Compose) and feeds the window's level gate. */
@@ -70,6 +72,7 @@ fun BoardScreen() {
     scene.zh = zh
     scene.now = { graph.flow.now() }
     scene.badgeWanted = !graph.window.panelOpen && graph.window.panelState != "never"
+    scene.make = { job -> graph.scope.launch(Dispatchers.IO) { runCatching { job() }.onFailure { Log.w(TAG, "SCENE make failed: $it") } } }
 
     DisposableEffect(navigator) {
         graph.window.attach(navigator)
@@ -118,11 +121,20 @@ fun BoardScreen() {
         initial = { content, _ ->
             content.addEntity(scene.root)
             val t0 = android.os.SystemClock.elapsedRealtime()
-            val res = withContext(NonCancellable + Dispatchers.Default) { SceneResources.create() }
-            // the plaque lines of this language, made ahead so no text texture is built on a tap (2026-11-05 R2)
-            withContext(NonCancellable + Dispatchers.IO) { Prewarm.plaque(res, zh) }
+            val first = graph.flow.state.value.lesson
+            val res = withContext(NonCancellable + Dispatchers.Default) { SceneResources.create(first) }
+            withContext(NonCancellable + Dispatchers.IO) { res.plaqueText(Joints.ALL[first].name.of(zh)); res.plaqueText(" ") }
             scene.install(res)
             Log.i(TAG, "STARTUP scene ready in ${android.os.SystemClock.elapsedRealtime() - t0} ms")
+            // the rest in the background, one at a time: this lesson's lines, the other lessons, every other line
+            // (2026-11-05 R2: no texture or mesh is made on the main thread at the first tap)
+            graph.scope.launch(Dispatchers.IO) {
+                val l = Joints.ALL[first]
+                for (t in listOf(Joints.ASK, Joints.OK, Joints.LOCKED) + l.steps.flatMap { st -> st.cands.mapNotNull { it.sign } }) res.plaqueText(t.of(zh))
+                for (li in Joints.ALL.indices) res.lesson(li)
+                Prewarm.plaque(res, zh)
+                Log.i(TAG, "STARTUP background warm-up done in ${android.os.SystemClock.elapsedRealtime() - t0} ms")
+            }
         },
         update = { content, _ ->
             if (viewSize != IntSize.Zero) {
@@ -170,6 +182,7 @@ internal class BoardListener(private val graph: Graph, private val scene: BoardS
     }
 
     /** Tap only (gate B decision 4: 只点箭头，不捏住拖): a press that travels is still one tap on what it started on. */
+    // gate:allow shared-drag 拖动不移动任何东西，只当成点一下（箭头 / 转台 / 圆牌）；门 B 用户定「不拖」，容器是设计包定的 Shared Space 体积
     override fun onDragStart(target: String, source: InputSource): Boolean {
         BoardInputLog.write(TAG, "INPUT drag-as-tap src=${source.label} target=$target -> square=${BoardTargets.squareOf(target, graph.flow.state.value)}")
         routeFlow(graph, target)
