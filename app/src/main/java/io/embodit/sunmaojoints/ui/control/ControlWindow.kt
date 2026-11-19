@@ -58,6 +58,7 @@ import io.embodit.sunmaojoints.domain.Phase
 import io.embodit.sunmaojoints.domain.PlayState
 import io.embodit.sunmaojoints.domain.T
 import io.embodit.sunmaojoints.platform.Graph
+import io.embodit.sunmaojoints.platform.BackKeys
 import io.embodit.sunmaojoints.platform.TAG
 import io.embodit.sunmaojoints.ui.Page
 import io.embodit.sunmaojoints.ui.Ui
@@ -80,6 +81,8 @@ fun ControlWindow() {
         graph.window.attachPanel(nav)
         val obs = LifecycleEventObserver { _, e ->
             graph.window.onPanelLifecycle(e.name)
+            // D60 补: the window and its TabBar get new root views on every (re)open; hook them for BACK / B
+            if (e.name == "ON_RESUME") for (ms in longArrayOf(0, 500, 1500)) Handler(Looper.getMainLooper()).postDelayed({ BackKeys.sweep("window") }, ms)
             // S13: closed while on the settings page -> back to the joints page, the volume answers again
             if (e.name == "ON_DESTROY") { Ui.page = Page.JOINTS; Ui.exitAsk = false; Ui.howTo = false; graph.flow.setSettingsOpen(false) }
         }
@@ -95,7 +98,7 @@ fun ControlWindow() {
     var redraw by remember { mutableIntStateOf(0) }
     LaunchedEffect(Ui.page, graph.window.panelState) { for (ms in longArrayOf(300, 1000, 2000, 3500, 6000)) { delay(ms); redraw++ } }
     Box(
-        Modifier.fillMaxSize().clip(RoundedCornerShape(32.dp))
+        Modifier.fillMaxSize().clip(RoundedCornerShape(32.dp)).eatPadKeys("window")
             .drawBehind { if (redraw >= 0) drawRect(SunmaoColors.WindowBase) }
             .padding(horizontal = 24.dp, vertical = 16.dp)
     ) {
@@ -346,7 +349,7 @@ private fun NativeTabs(tabs: List<Triple<Page, Int, String>>) {
         tabs.forEach { (page, icon, label) ->
             item(
                 selected = Ui.page == page,
-                onClick = { Ui.page = page },
+                onClick = { Ui.page = page; BackKeys.sweep("tab") },
                 // the system capsule never draws supportContent (pico-cli-feedback: TabBar 只画图标), so the word sits under
                 // the icon in mainContent and takes the item's content colour (white when selected, puzzle-box QA q2-1)
                 mainContent = {

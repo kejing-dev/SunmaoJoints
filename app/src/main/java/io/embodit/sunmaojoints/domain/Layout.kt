@@ -92,23 +92,33 @@ object Layout {
     }
 
     // ---------------------------------------------------------------- arrows (brief item 4, profile D50 / D17)
-    /** Collider sphere of every arrow: 11 cm (the visible arrow is 7 x 6.6 x 1.5 cm). */
-    const val ARROW_HIT_D = 0.11f
+    /**
+     * Collider sphere of every arrow: 12 cm (the visible arrow is 7 x 6.6 cm, two crossed fins). QA #1 q1-2: 11 cm fell
+     * to 2.99° from the side eyes at the far turntable stops; 12 cm keeps >= 3.2° out to 2.1 m.
+     */
+    const val ARROW_HIT_D = 0.12f
     const val ARROW_LEN = 0.07f
     /** Gap between the ghost's outer end and the arrow (design: 虚影尾巴外 3 cm). */
     const val ARROW_GAP = 0.03f
+    /** Gate B decision 4 with margin: every hit sphere >= 3.2° (rule 3°) and every gap >= 2.3° (rule 2°) from all [EYES]. */
+    const val ARROW_MIN_DEG = 3.2f
+    const val ARROW_GAP_DEG = 2.3f
+    /** At least this much of each hit sphere (centre + 6 points at 0.7 r) is seen past wood, ghosts and turntable. */
+    const val ARROW_MIN_VIS = 0.7f
 
     /** The default seated eye (design occlusionCheck.eye, N10). */
     val EYE = V3(0f, 0.061f, 1.749f)
     /** The three eye spots of the arrow audit: front, 30° left, 30° right on the same 1.75 m circle. */
     val EYES = listOf(EYE, V3(-0.875f, 0.061f, 1.515f), V3(0.875f, 0.061f, 1.515f))
+    /** Where the main fin of every arrow turns to: between the three eyes. */
+    val EYE_MID = V3(0f, 0.061f, 1.593f)
 
     data class ArrowSpot(val pos: V3, val push: V3, val lifted: Boolean)
 
     /**
-     * Where candidate [c]'s arrow stands: beyond the outer end of its ghost along the way it comes in, pointing the way
-     * it is pushed. When the turntable has been turned so that the way in faces away from the user, the arrow is lifted
-     * above the joint (brief item 4: 转台转动后箭头跟到可点的一侧) so it is never hidden behind the wood.
+     * Where candidate [c]'s arrow would stand on its own: beyond the outer end of its ghost along the way it comes in,
+     * pointing the way it is pushed. When the turntable has been turned so that the way in faces away from the user, the
+     * arrow is lifted above the joint (brief item 4: 转台转动后箭头跟到可点的一侧) so it is never hidden behind the wood.
      */
     fun arrowSpot(l: Lesson, c: Cand, entryCm: Float, yaw: Q): ArrowSpot {
         val pose = candPose(l, c, entryCm, yaw)
@@ -122,29 +132,141 @@ object Layout {
         return ArrowSpot(p, -d, lifted)
     }
 
-    /** Highest a lifted arrow may go (its hit sphere stays under the plaque, y 0.265). */
-    const val LIFT_MAX = 0.205f
+    /** Highest a hit sphere centre may go (it stays under the plaque, y 0.265, and in the inner box). */
+    const val LIFT_MAX = 0.20f
+
+    /** Gap (degrees) between two hit spheres seen from [eye]: centre angle minus both half sizes. */
+    fun gapDeg(eye: V3, a: V3, b: V3): Float = sepDeg(eye, a, b) - angleDeg(eye, a, ARROW_HIT_D) / 2 - angleDeg(eye, b, ARROW_HIT_D) / 2
+
+    /** The smallest gap over all three eyes (QA #1 q1-1: the old layout only looked from the front eye). */
+    fun minGapDeg(a: V3, b: V3): Float = EYES.minOf { gapDeg(it, a, b) }
 
     /**
-     * All arrows of step [k] at turntable yaw [yaw]. A lifted arrow (way in facing away) is raised in 1 cm steps until
-     * its hit sphere clears every other one by >= 2.2° from the seated eye (gate B decision 4: 彼此间隔 >= 2°).
+     * What can stand between an eye and an arrow of lesson [li] step [k] at turntable yaw [yaw]: the pieces (fixed and
+     * installed at home, the rest on their mats), the step's ghosts and the block. The drum is checked in [drumHit].
      */
-    fun arrowSpots(l: Lesson, li: Int, k: Int, yaw: Q): List<ArrowSpot> {
-        val spots = l.steps[k].cands.mapIndexed { i, c -> arrowSpot(l, c, entryCm(JointTable.row(li, k, i), c), yaw) }.toMutableList()
-        fun gap(a: V3, b: V3) = sepDeg(EYE, a, b) - angleDeg(EYE, a, ARROW_HIT_D) / 2 - angleDeg(EYE, b, ARROW_HIT_D) / 2
-        for (i in spots.indices) {
-            if (!spots[i].lifted) continue
-            var p = spots[i].pos
-            fun crowded(q: V3) = spots.indices.any { j -> j != i && gap(q, spots[j].pos) < 2.2f }
-            while (p.y < LIFT_MAX && crowded(p)) p = V3(p.x, minOf(LIFT_MAX, p.y + 0.01f), p.z)
-            // still crowded at the top: further out, at most 26.5 cm along x and z (the hit sphere stays in the volume)
-            while (crowded(p) && maxOf(kotlin.math.abs(p.x), kotlin.math.abs(p.z)) < 0.2649f) {
-                val k = minOf(1.03f, 0.265f / maxOf(kotlin.math.abs(p.x), kotlin.math.abs(p.z)))
-                p = V3(p.x * k, p.y, p.z * k)
-            }
-            spots[i] = spots[i].copy(pos = p)
+    fun occluders(li: Int, k: Int, yaw: Q): List<Aabb> {
+        val l = Joints.ALL[li]
+        fun box(id: String, p: Pose) = l.piece(id).bounds.let { Aabb(it.lo * CM, it.hi * CM) }.transformed(p)
+        val installed = (0 until k).map { l.steps[it].fit.piece }.toSet()
+        val out = ArrayList<Aabb>()
+        for (pc in l.pieces) out += box(pc.id, if (pc.fixed || pc.id in installed) joint(l, yaw) else matPose(l, pc.id))
+        for ((i, c) in l.steps[k].cands.withIndex()) out += box(c.piece, candPose(l, c, entryCm(JointTable.row(li, k, i), c), yaw))
+        if (l.base == Base.BLOCK) out += Aabb(V3(-0.06f, TABLE_Y, -0.06f), V3(0.06f, TABLE_Y + BLOCK_H, 0.06f))
+        return out
+    }
+
+    private fun inDrum(q: V3) = q.y > TURNTABLE_C.y - 0.05f && q.y < TABLE_Y && q.x * q.x + q.z * q.z < TABLE_R * TABLE_R
+
+    /** Whether the segment [a]..[b] passes through the turntable drum (sampled every 5 mm). */
+    fun drumHit(a: V3, b: V3): Boolean {
+        val d = b - a; val n = (d.length / 0.005f).toInt().coerceAtLeast(1)
+        return (1 until n).any { inDrum(a + d * (it.toFloat() / n)) }
+    }
+
+    /** Whether the segment [a]..[b] passes through [box] (slab test). */
+    fun segHits(a: V3, b: V3, box: Aabb): Boolean {
+        var t0 = 0f; var t1 = 1f
+        for (ax in 0..2) {
+            val d = b[ax] - a[ax]
+            if (abs(d) < 1e-9f) { if (a[ax] <= box.lo[ax] || a[ax] >= box.hi[ax]) return false; continue }
+            var ta = (box.lo[ax] - a[ax]) / d; var tb = (box.hi[ax] - a[ax]) / d
+            if (ta > tb) { val t = ta; ta = tb; tb = t }
+            t0 = maxOf(t0, ta); t1 = minOf(t1, tb)
+            if (t0 >= t1) return false
         }
-        return spots
+        return t1 > 0f && t0 < 1f
+    }
+
+    /** Fraction of the hit sphere at [c] (centre + 6 points at 0.7 r) that [eye] sees past [occ] and the drum. */
+    fun visibleFrac(eye: V3, c: V3, occ: List<Aabb>): Float {
+        val r = ARROW_HIT_D / 2 * 0.7f
+        val pts = listOf(c, c + V3(r, 0f, 0f), c - V3(r, 0f, 0f), c + V3(0f, r, 0f), c - V3(0f, r, 0f), c + V3(0f, 0f, r), c - V3(0f, 0f, r))
+        return pts.count { p -> occ.none { segHits(eye, p, it) } && !drumHit(eye, p) }.toFloat() / pts.size
+    }
+
+    /** The hit sphere at [c] stays inside the inner box. */
+    fun sphereInside(c: V3): Boolean {
+        val r = ARROW_HIT_D / 2
+        return c.x - r >= INNER.lo.x && c.x + r <= INNER.hi.x && c.y - r >= INNER.lo.y && c.y + r <= INNER.hi.y && c.z - r >= INNER.lo.z && c.z + r <= INNER.hi.z
+    }
+
+    /**
+     * Offsets an arrow may move by when its own spot is crowded or hidden, nearest first. Toward the user (+z) and up
+     * cost less than sideways, away costs most (D50 补: 摆在离用户近的一侧).
+     */
+    private val MOVES: List<V3> by lazy {
+        val out = ArrayList<Pair<Float, V3>>()
+        for (iy in -4..16) for (ix in -20..20) for (iz in -10..18) {
+            val d = V3(ix * 0.01f, iy * 0.015f, iz * 0.015f)
+            out += sqrt(d.x * d.x + d.y * d.y * (if (d.y > 0) 0.8f else 1.5f) + d.z * d.z * (if (d.z > 0) 0.6f else 2.5f)) to d
+        }
+        out.sortedBy { it.first }.map { it.second }
+    }
+
+    private val cache = java.util.concurrent.ConcurrentHashMap<Triple<Int, Int, Int>, List<ArrowSpot>>()
+
+    /**
+     * All arrows of lesson [li] step [k] at whole turntable stop [stop], cached. Each arrow keeps its own spot when that
+     * passes; otherwise it moves to the nearest spot (cheapest of [MOVES]) where, from all three [EYES], its hit sphere is
+     * >= [ARROW_MIN_DEG], >= [ARROW_GAP_DEG] from every arrow already placed, >= [ARROW_MIN_VIS] visible and inside the
+     * inner box (QA #1 q1-1).
+     */
+    fun arrowSpotsAt(li: Int, k: Int, stop: Int): List<ArrowSpot> = cache.getOrPut(Triple(li, k, Math.floorMod(stop, 4))) {
+        val l = Joints.ALL[li]
+        val yaw = yawQ(Math.floorMod(stop, 4).toFloat())
+        val own = l.steps[k].cands.mapIndexed { i, c -> arrowSpot(l, c, entryCm(JointTable.row(li, k, i), c), yaw) }
+        val occ = occluders(li, k, yaw)
+        fun place(order: List<Int>): Pair<Float, List<ArrowSpot>>? {
+            val placed = arrayOfNulls<ArrowSpot>(own.size)
+            var cost = 0f
+            for (i in order) {
+                fun ok(p: V3): Boolean {
+                    if (p.y > LIFT_MAX || !sphereInside(p)) return false
+                    if (EYES.any { angleDeg(it, p, ARROW_HIT_D) < ARROW_MIN_DEG }) return false
+                    if (placed.any { it != null && minGapDeg(p, it.pos) < ARROW_GAP_DEG }) return false
+                    if (occ.any { it.contains(p) }) return false
+                    return EYES.all { visibleFrac(it, p, occ) >= ARROW_MIN_VIS }
+                }
+                val base = own[i].pos
+                val m = MOVES.firstOrNull { ok(base + it) } ?: return null
+                placed[i] = own[i].copy(pos = base + m); cost += m.length
+            }
+            return cost to placed.map { it!! }
+        }
+        // arrows nearer the user first, lifted ones last; when that order leaves one without a spot (an earlier arrow
+        // sits in its way from a side eye), every other order is tried and the cheapest full layout wins
+        val first = own.indices.sortedWith(compareBy({ own[it].lifted }, { -own[it].pos.z }))
+        place(first)?.second ?: perms(own.indices.toList()).mapNotNull { place(it) }.minByOrNull { it.first }?.second
+            ?: own // never reached: LayoutTest.arrowLayoutMarginHolds proves a full layout for every step x stop
+    }
+
+    private fun perms(l: List<Int>): List<List<Int>> = if (l.size <= 1) listOf(l) else l.flatMap { x -> perms(l - x).map { listOf(x) + it } }
+
+    /** Lays out every lesson x step x stop ahead of time (called off the main thread while the scene loads). */
+    fun warmArrows() { for ((li, l) in Joints.ALL.withIndex()) for (k in l.steps.indices) for (s in 0..3) arrowSpotsAt(li, k, s) }
+
+    /**
+     * The arrows while the turntable is at [stopF] (between stops while it turns): the layouts of the two neighbouring
+     * stops are carried round with the turntable and blended, so at a whole stop it is exactly [arrowSpotsAt].
+     */
+    fun arrowSpots(li: Int, k: Int, stopF: Float): List<ArrowSpot> {
+        val s0 = kotlin.math.floor(stopF).toInt(); val u = stopF - s0
+        val a = arrowSpotsAt(li, k, s0)
+        if (u < 1e-4f) return a
+        val b = arrowSpotsAt(li, k, s0 + 1)
+        fun carry(sp: ArrowSpot, from: Int): ArrowSpot {
+            val q = Q.yawDeg(90f * (stopF - from))
+            val c = V3(0f, sp.pos.y, 0f)
+            return ArrowSpot(q.rotate(sp.pos - c) + c, q.rotate(sp.push), sp.lifted)
+        }
+        return a.indices.map { i ->
+            val x = carry(a[i], s0); val y = carry(b[i], s0 + 1)
+            // carried round the corner of the box a sphere would poke out: keep it inside while turning
+            val r = ARROW_HIT_D / 2
+            val p = x.pos.lerp(y.pos, u).max(INNER.lo + V3(r, r, r)).min(INNER.hi - V3(r, r, r))
+            ArrowSpot(p, x.push.lerp(y.push, u).normalized(), if (u < 0.5f) x.lifted else y.lifted)
+        }
     }
 
     /** How far above the top of the joint a lifted arrow floats. */
@@ -188,6 +310,9 @@ object Layout {
         }.norm()
     }
 
-    /** The arrow's rotation: pointing along [push], its flat face toward the seated eye. */
-    fun arrowRot(spot: ArrowSpot): Q = basis(spot.push, EYE - spot.pos)
+    /**
+     * The arrow's rotation: pointing along [push], its main fin facing the middle of the three eyes (the second fin
+     * stands across it, so no eye sees only a thin edge, QA #1 q1-2).
+     */
+    fun arrowRot(spot: ArrowSpot): Q = basis(spot.push, EYE_MID - spot.pos)
 }

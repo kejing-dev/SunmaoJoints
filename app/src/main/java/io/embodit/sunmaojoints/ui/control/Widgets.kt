@@ -30,8 +30,27 @@ import com.pico.spatial.ui.design.SegmentItem
 import com.pico.spatial.ui.design.Switch
 import androidx.compose.foundation.selection.toggleable
 import com.pico.spatial.ui.design.Text
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import io.embodit.sunmaojoints.platform.BackKeys
 import io.embodit.sunmaojoints.platform.TAG
 import io.embodit.sunmaojoints.ui.theme.SunmaoColors
+
+/**
+ * D60: controller keys never press a window button. Buttons cannot take focus (so ENTER / DPAD_CENTER have nothing to
+ * click) and the window eats A / X / Y / ENTER / DPAD_CENTER before they reach anything (logged, unassigned); BACK and
+ * controller B go to the one back handler (reopen / nothing), never to a focused control.
+ */
+internal val PAD_KEYS = setOf(Key.ButtonA, Key.ButtonB, Key.ButtonX, Key.ButtonY, Key.Enter, Key.NumPadEnter, Key.DirectionCenter)
+
+internal fun Modifier.eatPadKeys(where: String): Modifier = onPreviewKeyEvent { e ->
+    if (BackKeys.route(e.nativeKeyEvent, "compose:$where")) true
+    else if (e.key in PAD_KEYS) { Log.i(TAG, "KEY eaten $where ${e.key}"); true } else false
+}
+
+internal val NoFocus: Modifier = Modifier.focusProperties { canFocus = false }
 
 /** Text that logs "OVERFLOW <panel>/<control>" whenever it is cut (profile D13; ui-audit runs read the log). */
 @Composable
@@ -53,7 +72,7 @@ internal fun Txt(
 @Composable
 internal fun PrimaryButton(text: String, tag: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: Int? = null) {
     Button(
-        onClick = onClick, modifier = modifier, enabled = enabled,
+        onClick = onClick, modifier = modifier.then(NoFocus), enabled = enabled,
         size = ButtonDefaults.Regular.copy(height = 64.dp, minWidth = 160.dp),
         shape = RoundedCornerShape(32.dp),
         colors = ButtonDefaults.buttonColors(containerColor = PicoTheme.colorScheme.interaction, contentColor = PicoTheme.colorScheme.labelPrimaryLight),
@@ -70,7 +89,7 @@ internal fun PrimaryButton(text: String, tag: String, onClick: () -> Unit, modif
 @Composable
 internal fun SecondaryButton(text: String, tag: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, danger: Boolean = false, icon: Int? = null) {
     Button(
-        onClick = onClick, modifier = modifier, enabled = enabled,
+        onClick = onClick, modifier = modifier.then(NoFocus), enabled = enabled,
         size = ButtonDefaults.Regular.copy(height = 64.dp, minWidth = 96.dp),
         shape = RoundedCornerShape(32.dp),
         colors = ButtonDefaults.buttonColors(
@@ -95,7 +114,7 @@ internal fun SecondaryButton(text: String, tag: String, onClick: () -> Unit, mod
 internal fun KeyButton(text: String, tag: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, big: Boolean = false, sub: String? = null) {
     val fg = if (on) PicoTheme.colorScheme.labelPrimaryLight else PicoTheme.colorScheme.labelPrimary
     Button(
-        onClick = onClick, modifier = modifier, enabled = enabled,
+        onClick = onClick, modifier = modifier.then(NoFocus), enabled = enabled,
         size = ButtonDefaults.Regular.copy(height = 64.dp, minWidth = 72.dp),
         shape = RoundedCornerShape(32.dp),
         colors = ButtonDefaults.buttonColors(containerColor = if (on) PicoTheme.colorScheme.interaction else PicoTheme.colorScheme.fillSecondary, contentColor = fg),
@@ -111,7 +130,7 @@ internal fun KeyButton(text: String, tag: String, on: Boolean, onClick: () -> Un
 internal fun ToggleButton(text: String, tag: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: Int? = null) {
     val fg = if (on) PicoTheme.colorScheme.labelPrimaryLight else PicoTheme.colorScheme.labelPrimary
     Button(
-        onClick = onClick, modifier = modifier, enabled = enabled,
+        onClick = onClick, modifier = modifier.then(NoFocus), enabled = enabled,
         size = ButtonDefaults.Regular.copy(height = 64.dp, minWidth = 96.dp),
         shape = RoundedCornerShape(32.dp),
         colors = ButtonDefaults.buttonColors(containerColor = if (on) PicoTheme.colorScheme.interaction else PicoTheme.colorScheme.fillSecondary, contentColor = fg),
@@ -139,7 +158,7 @@ internal fun OptionRow(label: String, tag: String, labelWidth: Dp = 112.dp, cont
 @Composable
 internal fun <T> Segments(options: List<Pair<T, String>>, selected: T, tag: String, onSelect: (T) -> Unit, modifier: Modifier = Modifier, small: Boolean = false) {
     // B19: the control itself is >= 48 dp tall (the default track is ~37 dp).
-    SegmentControl(modifier = modifier.height(52.dp)) {
+    SegmentControl(modifier = modifier.height(52.dp).then(NoFocus)) {
         options.forEach { (value, label) ->
             SegmentItem(
                 selected = value == selected,
@@ -158,7 +177,7 @@ internal fun <T> Segments(options: List<Pair<T, String>>, selected: T, tag: Stri
 @Composable
 internal fun SwitchRow(label: String, tag: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp))
+        Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp)).then(NoFocus)
             .toggleable(value = checked, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {

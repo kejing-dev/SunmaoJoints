@@ -131,11 +131,15 @@ object MeshGen {
         return m
     }
 
-    /** The flat arrow (design E5: 7 x 6.6 x 1.5 cm), pointing +x, faces toward +-z. */
+    /**
+     * The arrow (design E5: 7 x 6.6 x 1.5 cm), pointing +x: the main fin faces +-z, a second fin across it faces +-y, so
+     * from a side eye it never thins to an edge (QA #1 q1-2).
+     */
     fun arrow(): MeshData {
         val m = MeshData()
         val pts = listOf(-3.5f to -1.8f, 0.2f to -1.8f, 0.2f to -3.3f, 3.5f to 0f, 0.2f to 3.3f, 0.2f to 1.8f, -3.5f to 1.8f)
         prism(m, Prim.xy(pts, -0.75f, 0.75f, Mat.LIGHT), 0)
+        prism(m, Prim.xz(pts, -0.75f, 0.75f, Mat.LIGHT), 0)
         return m
     }
 

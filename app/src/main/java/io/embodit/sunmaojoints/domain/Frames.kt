@@ -149,7 +149,7 @@ object Frames {
                 }
                 val locked = p != null && now < p.lockUntil
                 live = !locked && !st.settingsOpen
-                val spots = Layout.arrowSpots(l, st.lesson, st.step, yaw)
+                val spots = Layout.arrowSpots(st.lesson, st.step, yawStops(st, now))
                 for ((i, c) in step.cands.withIndex()) {
                     val row = JointTable.row(st.lesson, st.step, i)
                     val entry = Layout.entryCm(row, c)

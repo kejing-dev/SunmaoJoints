@@ -204,9 +204,11 @@ internal class SceneResources private constructor() {
                 async(io) { r.badgeQuad = meshOf("badgeIcon", MeshGen.quadXY(0.06f, 0.06f)).keep() },
                 async(io) { r.shadowQuad = meshOf("shadow", MeshGen.quadXZ(0.34f, 0.34f)).keep() },
                 async(io) { r.physics = PhysicsMaterialResource().keep() },
-                // gate B decision 4: every arrow's hit sphere is 11 cm (>= 3° from the seated eye, LayoutTest)
+                // gate B decision 4: every arrow's hit sphere is 12 cm (>= 3.2° from all three eyes, LayoutTest / QaArrowAuditTest)
                 async(io) { r.arrowShape = ShapeResource.createSphere(Layout.ARROW_HIT_D / 2).keep() },
                 async(io) { r.badgeShape = ShapeResource.createSphere(0.045f).keep() },
+                // every step x stop arrow layout up front, so the first tap / turn never computes it on the main thread
+                async(io) { Layout.warmArrows() },
             ).awaitAll()
             r.turntableShape = runCatching { ShapeResource.createConvexMesh(r.drum).keep() }
                 .getOrElse { ShapeResource.createBox(Vector3(0.34f, 0.10f, 0.34f)).keep() }

@@ -33,50 +33,55 @@ class LayoutTest {
         assertTrue(bad.joinToString("\n"), bad.isEmpty())
     }
 
-    /** Fraction of the arrow's hit sphere (centre + 6 points at 0.7 r) the eye sees past the wood (piece boxes). */
-    private fun visible(eye: V3, c: V3, boxes: List<Aabb>): Float {
-        val r = Layout.ARROW_HIT_D / 2 * 0.7f
-        val pts = listOf(c, c + V3(r, 0f, 0f), c - V3(r, 0f, 0f), c + V3(0f, r, 0f), c - V3(0f, r, 0f), c + V3(0f, 0f, r), c - V3(0f, 0f, r))
-        return pts.count { p -> boxes.none { segHits(eye, p, it) } }.toFloat() / pts.size
-    }
-
-    private fun segHits(a: V3, b: V3, box: Aabb): Boolean {
-        var t0 = 0f; var t1 = 1f
-        for (ax in 0..2) {
-            val d = b[ax] - a[ax]
-            if (kotlin.math.abs(d) < 1e-9f) { if (a[ax] <= box.lo[ax] || a[ax] >= box.hi[ax]) return false; continue }
-            var ta = (box.lo[ax] - a[ax]) / d; var tb = (box.hi[ax] - a[ax]) / d
-            if (ta > tb) { val t = ta; ta = tb; tb = t }
-            t0 = maxOf(t0, ta); t1 = minOf(t1, tb)
-            if (t0 >= t1) return false
-        }
-        return t1 > 0f && t0 < 1f
-    }
-
+    /**
+     * Gate B decision 4 / D50 补 (QA #1 q1-1, q1-2): every step x 4 stops x the three eyes, each hit sphere >= 3°, gaps
+     * >= 2°, >= 70 % seen past wood, ghosts, block and turntable, on the near side at the step's stop.
+     */
     @Test fun arrowsBigEnoughSeparateAndVisible() {
         val bad = ArrayList<String>()
+        var n = 0
         for (li in 0..7) {
             val l = Joints.ALL[li]
             for (k in l.steps.indices) for (y in 0..3) {
                 val st = pick(li, k, y)
                 val f = Frames.frame(st, 10_000)
-                val boxes = pieceBoxes(st, f)
-                for (a in f.arrows) {
-                    val ang = Layout.angleDeg(Layout.EYE, a.spot.pos, Layout.ARROW_HIT_D)
-                    if (ang < 3f) bad += "${l.id} s$k stop $y arrow ${a.cand}: ${"%.2f".format(ang)}° < 3°"
-                    val vis = visible(Layout.EYE, a.spot.pos, boxes)
-                    if (vis < 0.7f) bad += "${l.id} s$k stop $y arrow ${a.cand}: only ${(vis * 100).toInt()} % visible"
-                    if (y == 0 && a.spot.pos.z < 0f) bad += "${l.id} s$k arrow ${a.cand} not on the near side at the step's stop: z ${a.spot.pos.z}"
+                val occ = Layout.occluders(li, k, Layout.yawQ(y.toFloat()))
+                for ((ei, eye) in Layout.EYES.withIndex()) {
+                    for (a in f.arrows) {
+                        n++
+                        val ang = Layout.angleDeg(eye, a.spot.pos, Layout.ARROW_HIT_D)
+                        if (ang < 3f) bad += "${l.id} s$k stop $y eye $ei arrow ${a.cand}: ${"%.2f".format(ang)}° < 3°"
+                        val vis = Layout.visibleFrac(eye, a.spot.pos, occ)
+                        if (vis < 0.7f) bad += "${l.id} s$k stop $y eye $ei arrow ${a.cand}: only ${(vis * 100).toInt()} % visible"
+                    }
+                    for (i in f.arrows.indices) for (j in i + 1 until f.arrows.size) {
+                        val gap = Layout.gapDeg(eye, f.arrows[i].spot.pos, f.arrows[j].spot.pos)
+                        if (gap < 2f) bad += "${l.id} s$k stop $y eye $ei arrows $i/$j gap ${"%.2f".format(gap)}° < 2°"
+                    }
                 }
-                for (i in f.arrows.indices) for (j in i + 1 until f.arrows.size) {
-                    val a = f.arrows[i].spot.pos; val b = f.arrows[j].spot.pos
-                    val gap = Layout.sepDeg(Layout.EYE, a, b) - Layout.angleDeg(Layout.EYE, a, Layout.ARROW_HIT_D) / 2 - Layout.angleDeg(Layout.EYE, b, Layout.ARROW_HIT_D) / 2
-                    if (gap < 2f) bad += "${l.id} s$k stop $y arrows $i/$j gap ${"%.2f".format(gap)}° < 2°"
-                    if ((a - b).length < 0.12f) bad += "${l.id} s$k stop $y arrows $i/$j centres ${(a - b).length} m < 12 cm"
-                }
+                for (a in f.arrows) if (y == 0 && a.spot.pos.z < 0f) bad += "${l.id} s$k arrow ${a.cand} not on the near side at the step's stop: z ${a.spot.pos.z}"
             }
         }
         assertTrue(bad.joinToString("\n"), bad.isEmpty())
+        assertTrue("checked $n", n == 348)
+    }
+
+    /** The layout found a spot with margin for every arrow (>= 3.2°, gaps >= 2.3°), never its fallback. */
+    @Test fun arrowLayoutMarginHolds() {
+        for (li in 0..7) for (k in Joints.ALL[li].steps.indices) for (y in 0..3) {
+            val s = Layout.arrowSpotsAt(li, k, y)
+            for (a in s) for (e in Layout.EYES) assertTrue("${Joints.ALL[li].id} s$k stop $y", Layout.angleDeg(e, a.pos, Layout.ARROW_HIT_D) >= Layout.ARROW_MIN_DEG)
+            for (i in s.indices) for (j in i + 1 until s.size) assertTrue("${Joints.ALL[li].id} s$k stop $y $i/$j", Layout.minGapDeg(s[i].pos, s[j].pos) >= Layout.ARROW_GAP_DEG)
+        }
+    }
+
+    /** While the turntable turns the arrows ride along and land exactly on the next stop's layout. */
+    @Test fun arrowsBlendBetweenStops() {
+        for (li in 0..7) for (k in Joints.ALL[li].steps.indices) for (y in 0..3) {
+            val end = Layout.arrowSpots(li, k, y + 0.99999f); val next = Layout.arrowSpotsAt(li, k, y + 1)
+            for (i in end.indices) assertTrue("${Joints.ALL[li].id} s$k stop $y", (end[i].pos - next[i].pos).length < 1e-3f)
+            for (a in Layout.arrowSpots(li, k, y + 0.5f)) assertTrue("mid inside ${a.pos}", Layout.INNER.contains(a.pos))
+        }
     }
 
     @Test fun matsHoldTheirPieces() {
@@ -104,6 +109,36 @@ class LayoutTest {
         val q = Layout.arrowRot(spot)
         val x = q.rotate(V3(1f, 0f, 0f)); val z = q.rotate(V3(0f, 0f, 1f))
         assertTrue((x - spot.push).length < 1e-3f)
-        assertTrue(z.dot((Layout.EYE - spot.pos).normalized()) > 0.5f)
+        assertTrue(z.dot((Layout.EYE_MID - spot.pos).normalized()) > 0.5f)
+    }
+
+    /**
+     * QA #1 q1-2: no eye sees an arrow as a thin edge. The arrow is two crossed fins (outline 7 x 6.6 cm in its xy and xz
+     * planes, 1.5 cm thick); projected on each eye's view plane its silhouette is >= 3 cm wide in every direction (a
+     * single flat fin seen edge-on is 1.5 cm), and seen nearly along the push it still shows the crossed head.
+     */
+    @Test fun arrowFinsReadableFromEveryEye() {
+        val outline = listOf(-3.5f to -1.8f, 0.2f to -1.8f, 0.2f to -3.3f, 3.5f to 0f, 0.2f to 3.3f, 0.2f to 1.8f, -3.5f to 1.8f)
+        val pts = outline.flatMap { (u, v) -> listOf(-0.75f, 0.75f).flatMap { t -> listOf(V3(u, v, t), V3(u, t, v)) } }.map { it * 0.01f }
+        val bad = ArrayList<String>()
+        var minW = 1f
+        for (li in 0..7) for (k in Joints.ALL[li].steps.indices) for (y in 0..3) for (s in Layout.arrowSpotsAt(li, k, y)) {
+            val q = Layout.arrowRot(s)
+            val world = pts.map { q.rotate(it) }
+            for ((ei, e) in Layout.EYES.withIndex()) {
+                val v = (e - s.pos).normalized()
+                val a = (if (kotlin.math.abs(v.y) < 0.9f) V3(0f, 1f, 0f) else V3(1f, 0f, 0f)).let { (it - v * it.dot(v)).normalized() }
+                val b = v.cross(a)
+                // narrowest width of the silhouette over 12 directions in the view plane
+                val w = (0 until 12).minOf { i ->
+                    val t = Math.PI * i / 12; val d = a * kotlin.math.cos(t).toFloat() + b * kotlin.math.sin(t).toFloat()
+                    world.maxOf { it.dot(d) } - world.minOf { it.dot(d) }
+                }
+                minW = minOf(minW, w)
+                if (w < 0.03f) bad += "${Joints.ALL[li].id} s$k stop $y eye $ei silhouette ${"%.1f".format(w * 100)} cm"
+            }
+        }
+        assertTrue(bad.joinToString("\n"), bad.isEmpty())
+        println("arrow silhouette min width ${"%.1f".format(minW * 100)} cm")
     }
 }

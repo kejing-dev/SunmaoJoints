@@ -32,7 +32,7 @@ import kotlin.math.PI
  * ├ keyLight, turntable (holder "turntable": collider + Interactable + HoverEffect), contact shadow, block, 2 mats
  * ├ piece:<id>   wood / gold / red children (no collider: pieces are not tapped, design E2)
  * ├ ghost:<i>    35 % copies of candidate i's piece (pivot child scales about its centre), no collider
- * ├ arrow:<i>    11 cm hit sphere + Interactable + HoverEffect, the opaque teal arrow as its child (board-input)
+ * ├ arrow:<i>    12 cm hit sphere + Interactable + HoverEffect, the opaque teal arrow as its child (board-input)
  * ├ flash        orange contact plate (E10)
  * ├ plaque board + its line (no collider: never stops a ray, design P2)
  * ├ mini (0.4x, the life-size one) / minis (S10: eight at 0.25x on the mats)
