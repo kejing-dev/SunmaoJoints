@@ -48,6 +48,7 @@ import com.pico.spatial.ui.design.Icon
 import com.pico.spatial.ui.design.LocalContentColor
 import com.pico.spatial.ui.design.PicoTheme
 import com.pico.spatial.ui.design.windows.TabBar
+import com.pico.spatial.ui.platform.LocalPhysicalLengthConverter
 import com.pico.spatial.ui.platform.ViewPoint
 import com.pico.spatial.ui.platform.containers.LocalSpatialNavigator
 import io.embodit.sunmaojoints.BuildConfig
@@ -88,6 +89,12 @@ fun ControlWindow() {
         }
         owner.lifecycle.addObserver(obs)
         onDispose { owner.lifecycle.removeObserver(obs) }
+    }
+    // v0.1.2 q2-1: the window's real size in metres, so Layout.WINDOW (an arrow occluder) can be checked against it
+    val converter = LocalPhysicalLengthConverter.current
+    LaunchedEffect(converter) {
+        val m = with(converter) { converter.dpToLength(100.dp, com.pico.spatial.ui.platform.LengthUnit.Meters) } / 100f
+        Log.i(TAG, "WINDOW mPerDp=${"%.5f".format(m)} default=${"%.3f".format(560 * m)}x${"%.3f".format(360 * m)} m max=${"%.3f".format(640 * m)}x${"%.3f".format(460 * m)} m")
     }
     LaunchedEffect(Ui.page) {
         Log.i(TAG, "PAGE ${Ui.page}")

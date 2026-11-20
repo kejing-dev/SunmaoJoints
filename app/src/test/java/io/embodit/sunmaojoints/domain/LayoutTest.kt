@@ -53,6 +53,7 @@ class LayoutTest {
                         if (ang < 3f) bad += "${l.id} s$k stop $y eye $ei arrow ${a.cand}: ${"%.2f".format(ang)}° < 3°"
                         val vis = Layout.visibleFrac(eye, a.spot.pos, occ)
                         if (vis < 0.7f) bad += "${l.id} s$k stop $y eye $ei arrow ${a.cand}: only ${(vis * 100).toInt()} % visible"
+                        if (!Layout.clearOfWindow(eye, a.spot.pos)) bad += "${l.id} s$k stop $y eye $ei arrow ${a.cand}: behind the control window"
                     }
                     for (i in f.arrows.indices) for (j in i + 1 until f.arrows.size) {
                         val gap = Layout.gapDeg(eye, f.arrows[i].spot.pos, f.arrows[j].spot.pos)
@@ -64,6 +65,31 @@ class LayoutTest {
         }
         assertTrue(bad.joinToString("\n"), bad.isEmpty())
         assertTrue("checked $n", n == 348)
+    }
+
+    /**
+     * QA #2 q2-1: the window model matches the solver log and is a real occluder. Its footprint stays outside the volume
+     * (so the system placed it beside, not inside), the old v0.1.1 layout really was behind it from the right eye at
+     * stops 1 / 2 (the test would have caught q2-1), and the new layout is clear from all three eyes at every stop.
+     */
+    @Test fun controlWindowOccluder() {
+        val raw = V3(0.626776f - 0.037804f, 0f, -1.256906f + 1.748934f)
+        assertTrue("centre ${Layout.WINDOW_C} vs log $raw", (Layout.WINDOW_C - raw).length < 2e-3f)
+        val q = Q.yawDeg(Layout.WINDOW_YAW)
+        assertTrue("yaw vs log quat y -0.210376", kotlin.math.abs(q.y - (-0.210376f)) < 1e-3f && kotlin.math.abs(q.w - 0.977621f) < 1e-3f)
+        // the default 560 x 360 dp glass corners lie outside the volume box
+        for (sx in listOf(-1f, 1f)) for (sy in listOf(-1f, 1f)) {
+            val c = Layout.WINDOW_C + q.rotate(V3(sx * 280f, sy * 180f, 0f) * Layout.WINDOW_M_PER_DP)
+            assertTrue("glass corner $c outside the volume", !(kotlin.math.abs(c.x) < Layout.VOL_W / 2 && kotlin.math.abs(c.z) < Layout.VOL_D / 2))
+        }
+        // a point right behind the window centre, seen from the right eye, is hidden; the same from the left eye is not
+        val behind = Layout.WINDOW_C + (Layout.WINDOW_C - Layout.EYES[2]).normalized() * 0.3f
+        assertTrue(Layout.windowHit(Layout.EYES[2], behind))
+        assertTrue(!Layout.windowHit(Layout.EYES[1], V3(0f, 0f, 0f)))
+        // QA #2's case: v0.1.1 put zongjiao (lesson 7) step 1 stop 2's third arrow behind the window from the right eye
+        var hiddenStops = 0
+        for (li in 0..7) for (k in Joints.ALL[li].steps.indices) for (y in 0..3) for (a in Layout.arrowSpotsAt(li, k, y)) for (e in Layout.EYES) if (!Layout.clearOfWindow(e, a.pos)) hiddenStops++
+        assertTrue("arrows behind the window: $hiddenStops", hiddenStops == 0)
     }
 
     /** The layout found a spot with margin for every arrow (>= 3.2°, gaps >= 2.3°), never its fallback. */

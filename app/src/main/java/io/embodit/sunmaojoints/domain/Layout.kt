@@ -141,9 +141,52 @@ object Layout {
     /** The smallest gap over all three eyes (QA #1 q1-1: the old layout only looked from the front eye). */
     fun minGapDeg(a: V3, b: V3): Float = EYES.minOf { gapDeg(it, a, b) }
 
+    // ---------------------------------------------------------------- the control window as an occluder (v0.1.2, QA #2 q2-1)
+    /**
+     * The control window as the system solves Placement.right(volume) (logcat WorldSpaceNative onShowSolveTransform,
+     * 2026-11-19 emulator-5554, two cold starts and QA #2 identical): centre (0.589, 0, 0.492) from the volume centre,
+     * turned -24.3° about y to face the user. The window measures 0.00080 m/dp (logcat `WINDOW mPerDp`, the app's own
+     * dpToLength in the window), so the largest window it can be resized to (640 x 460 dp) is 0.512 x 0.368 m.
+     */
+    val WINDOW_C = V3(0.589f, 0f, 0.492f)
+    const val WINDOW_YAW = -24.3f
+    const val WINDOW_M_PER_DP = 0.0008f
+    /**
+     * The window's whole footprint in its own frame (x right, y up, z toward the user), in metres: the largest window
+     * (640 x 460 dp), the native TabBar capsule above it (90 dp), the system dots / close row below it (60 dp,
+     * profile D8 补), plus 2 cm all round and 3 cm of depth for the capsule standing proud of the glass.
+     */
+    val WINDOW_BOX = Aabb(
+        V3(-(320f * WINDOW_M_PER_DP + 0.02f), -((230f + 60f) * WINDOW_M_PER_DP + 0.02f), -0.03f),
+        V3(320f * WINDOW_M_PER_DP + 0.02f, (230f + 90f) * WINDOW_M_PER_DP + 0.02f, 0.03f),
+    )
+    private val W_X = Q.yawDeg(WINDOW_YAW).rotate(V3(1f, 0f, 0f))
+    private val W_Y = V3(0f, 1f, 0f)
+    private val W_Z = Q.yawDeg(WINDOW_YAW).rotate(V3(0f, 0f, 1f))
+    /** A volume point in the window's frame. */
+    fun toWindow(p: V3): V3 { val d = p - WINDOW_C; return V3(d.dot(W_X), d.dot(W_Y), d.dot(W_Z)) }
+
+    /** Whether the segment [a]..[b] passes through the control window's footprint [WINDOW_BOX]. */
+    fun windowHit(a: V3, b: V3): Boolean = segHits(toWindow(a), toWindow(b), WINDOW_BOX)
+
+    /** The 1:1 mini of lesson [l] (left of the turntable, 0.4 x the 2.5x joint, turned -45°). */
+    fun miniBox(l: Lesson): Aabb = Aabb(l.bounds.lo * (CM * MINI_K), l.bounds.hi * (CM * MINI_K)).transformed(Pose(MINI_C, Q.yawDeg(-45f)))
+
+    /** The walnut plaque (no collider, but it can still hide an arrow). */
+    val PLAQUE_BOX = Aabb(PLAQUE_C - PLAQUE_SIZE * 0.5f, PLAQUE_C + PLAQUE_SIZE * 0.5f)
+
+    /** The seven sample points of a hit sphere at [c] (centre + 6 at 0.7 r), as both audits use them. */
+    fun samplePoints(c: V3): List<V3> {
+        val r = ARROW_HIT_D / 2 * 0.7f
+        return listOf(c, c + V3(r, 0f, 0f), c - V3(r, 0f, 0f), c + V3(0f, r, 0f), c - V3(0f, r, 0f), c + V3(0f, 0f, r), c - V3(0f, 0f, r))
+    }
+
+    /** No part of the hit sphere at [c] is behind the control window from [eye] (D50 补: nothing may hide an arrow). */
+    fun clearOfWindow(eye: V3, c: V3): Boolean = samplePoints(c).none { windowHit(eye, it) }
+
     /**
      * What can stand between an eye and an arrow of lesson [li] step [k] at turntable yaw [yaw]: the pieces (fixed and
-     * installed at home, the rest on their mats), the step's ghosts and the block. The drum is checked in [drumHit].
+     * installed at home, the rest on their mats), the step's ghosts and the block, the 1:1 mini and the plaque (v0.1.2). The drum is checked in [drumHit], the control window in [windowHit].
      */
     fun occluders(li: Int, k: Int, yaw: Q): List<Aabb> {
         val l = Joints.ALL[li]
@@ -153,6 +196,8 @@ object Layout {
         for (pc in l.pieces) out += box(pc.id, if (pc.fixed || pc.id in installed) joint(l, yaw) else matPose(l, pc.id))
         for ((i, c) in l.steps[k].cands.withIndex()) out += box(c.piece, candPose(l, c, entryCm(JointTable.row(li, k, i), c), yaw))
         if (l.base == Base.BLOCK) out += Aabb(V3(-0.06f, TABLE_Y, -0.06f), V3(0.06f, TABLE_Y + BLOCK_H, 0.06f))
+        out += miniBox(l)
+        out += PLAQUE_BOX
         return out
     }
 
@@ -197,7 +242,7 @@ object Layout {
      */
     private val MOVES: List<V3> by lazy {
         val out = ArrayList<Pair<Float, V3>>()
-        for (iy in -4..16) for (ix in -20..20) for (iz in -10..18) {
+        for (iy in -4..16) for (ix in -32..20) for (iz in -10..18) {
             val d = V3(ix * 0.01f, iy * 0.015f, iz * 0.015f)
             out += sqrt(d.x * d.x + d.y * d.y * (if (d.y > 0) 0.8f else 1.5f) + d.z * d.z * (if (d.z > 0) 0.6f else 2.5f)) to d
         }
@@ -209,8 +254,8 @@ object Layout {
     /**
      * All arrows of lesson [li] step [k] at whole turntable stop [stop], cached. Each arrow keeps its own spot when that
      * passes; otherwise it moves to the nearest spot (cheapest of [MOVES]) where, from all three [EYES], its hit sphere is
-     * >= [ARROW_MIN_DEG], >= [ARROW_GAP_DEG] from every arrow already placed, >= [ARROW_MIN_VIS] visible and inside the
-     * inner box (QA #1 q1-1).
+     * >= [ARROW_MIN_DEG], >= [ARROW_GAP_DEG] from every arrow already placed, >= [ARROW_MIN_VIS] visible past wood, mini
+     * and plaque, wholly clear of the control window (v0.1.2, QA #2 q2-1) and inside the inner box (QA #1 q1-1).
      */
     fun arrowSpotsAt(li: Int, k: Int, stop: Int): List<ArrowSpot> = cache.getOrPut(Triple(li, k, Math.floorMod(stop, 4))) {
         val l = Joints.ALL[li]
@@ -226,6 +271,7 @@ object Layout {
                     if (EYES.any { angleDeg(it, p, ARROW_HIT_D) < ARROW_MIN_DEG }) return false
                     if (placed.any { it != null && minGapDeg(p, it.pos) < ARROW_GAP_DEG }) return false
                     if (occ.any { it.contains(p) }) return false
+                    if (EYES.any { !clearOfWindow(it, p) }) return false
                     return EYES.all { visibleFrac(it, p, occ) >= ARROW_MIN_VIS }
                 }
                 val base = own[i].pos

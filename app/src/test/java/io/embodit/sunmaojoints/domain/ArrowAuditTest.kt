@@ -23,7 +23,7 @@ class ArrowAuditTest {
                 sb.append(a.joinToString(" | ") { "%.2f°".format(it) }).append(" | ${"%.2f°".format(gap)} |\n")
             }
         }
-        sb.append("\n最小视角 ${"%.2f".format(minAng)}°（要求 ≥ 3°），最小间隔 ${"%.2f".format(minGap)}°（要求 ≥ 2°）。四档 × 三眼位由 LayoutTest.arrowsBigEnoughSeparateAndVisible 和 QaArrowAuditTest 断言（≥ 3°、≥ 2°、≥ 70 % 不被木头 / 虚影 / 转台挡）。\n")
+        sb.append("\n最小视角 ${"%.2f".format(minAng)}°（要求 ≥ 3°），最小间隔 ${"%.2f".format(minGap)}°（要求 ≥ 2°）。四档 × 三眼位由 LayoutTest.arrowsBigEnoughSeparateAndVisible 和 QaArrowAuditTest 断言（≥ 3°、≥ 2°、≥ 70 % 不被木头 / 虚影 / 转台 / 1:1 小样 / 木匾挡；控制窗（最大 640 × 460 dp + TabBar + 系统控件行，0.0008 m/dp）一个采样点都不挡，v0.1.2 q2-1）。\n")
         File(out).writeText(sb.toString())
     }
 }
